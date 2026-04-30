@@ -1,4 +1,13 @@
-./Makefile
-./st
-./mrst
+# binaries
+mrst
+st
+
+# object files
 *.o
+
+# patch artifacts
+*.orig
+*.rej
+
+# tarball
+*.tar.gz
