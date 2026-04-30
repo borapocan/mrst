@@ -5,14 +5,30 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "Liberation Mono:pixelsize=16:antialias=true:autohint=true";
+static char *font = "Liberation Mono:pixelsize=18:antialias=true:autohint=true";
 /* Spare fonts */
 static char *font2[] = {
 	"Inconsolata for Powerline:pixelsize=12:antialias=true:autohint=true",
 /*	"Hack Nerd Font Mono:pixelsize=11:antialias=true:autohint=true", */
 };
 
-static int borderpx = 2;
+static int borderpx = 0;
+
+/* scrollbar */
+//static int scrollbarwidth    = 10;  /* total px width of scrollbar column */
+//static int scrollbarborderpx = 3;   /* padding inside bar on each side */
+///* color indices: pick from your scheme or use 256/257 custom slots */
+//static unsigned int scrollbartrack = 257; /* track bg  — your #555555 */
+//static unsigned int scrollbarthumb = 256; /* thumb     — your #cccccc */
+//static const char *scrollbartrackcolor = "#808080";
+//static const char *scrollbarthumbcolor = "#1c1c1c";
+
+/* scrollbar */
+static int scrollbarwidth    = 10;
+static int scrollbarborderpx = 2;
+static int scrollbarvpadding = 4;
+static const char *scrollbartrackcolor = "#3a3a3a";
+static const char *scrollbarthumbcolor = "#707070";
 
 /*
  * What program is execed by st depends of these precedence rules:
@@ -80,7 +96,7 @@ static unsigned int cursorthickness = 2;
 static int bellvolume = 0;
 
 /* default TERM value */
-char *termname = "st-256color";
+char *termname = "mrst";
 
 /*
  * spaces per tab
@@ -101,6 +117,13 @@ unsigned int tabspaces = 8;
 
 /* bg opacity */
 float alpha = 0.5;
+
+/*
+ * drag and drop escape characters
+ *
+ * this will add a '\' before any characters specified in the string.
+ */
+char *xdndescchar = " !\"#$&'()*;<>?[\\]^`{|}~";
 
 /* Terminal colors (16 first used in escape sequence) */
 //static const char *colorname[] = {
@@ -242,7 +265,7 @@ static unsigned int defaultrcs;
  */
 
 //static unsigned int cursorshape = 2;
-static unsigned int cursorstyle = 1;
+static unsigned int cursorstyle = 0;
 static Rune stcursor = 0x2603; /* snowman ("â˜ƒ") */
 
 /*
@@ -305,6 +328,8 @@ static Shortcut shortcuts[] = {
 	{ TERMMOD,              XK_Y,           selpaste,       {.i =  0} },
 	{ ShiftMask,            XK_Insert,      selpaste,       {.i =  0} },
 	{ TERMMOD,              XK_Num_Lock,    numlock,        {.i =  0} },
+	{ MODKEY,               XK_l,           copyurl,        {.i =  0} },
+	{ MODKEY|ShiftMask,     XK_L,           copyurl,        {.i =  1} },
 	{ ShiftMask,            XK_Page_Up,     kscrollup,      {.i = -1} },
 	{ ShiftMask,            XK_Page_Down,   kscrolldown,    {.i = -1} },
 	{ MODKEY,               XK_F1,          selectscheme,   {.i =  0} },
@@ -589,3 +614,41 @@ static char ascii_printable[] =
 	" !\"#$%&'()*+,-./0123456789:;<=>?"
 	"@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"
 	"`abcdefghijklmnopqrstuvwxyz{|}~";
+
+/*
+ * Open urls starting with urlprefixes, contatining urlchars
+ * by passing as ARG1 to urlhandler.
+ */
+//char* urlhandler = "xdg-open";
+char* urlhandler = "firefox"; // Added --new-window in st.c followurl execlp
+//char *urlhandler = "sh";
+
+char urlchars[] =
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	"abcdefghijklmnopqrstuvwxyz"
+	"0123456789-._~:/?#@!$&'*+,;=%";
+
+char *urlprefixes[] = {
+    "http://",
+    "https://",
+    "file://",
+    "ftp://",
+    "ftps://",
+    "sftp://",
+    "git://",
+    "ssh://",
+    "ws://",
+    "wss://",
+    "irc://",
+    "rtsp://",
+    "smb://",
+    "nntp://",
+    "svn://",
+    "news:",
+    "mailto:",
+    "tel:",
+    "sms:",
+    "data:",
+    "javascript:",
+    NULL
+};

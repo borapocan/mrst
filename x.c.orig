@@ -210,7 +210,6 @@ static void usage(void);
 
 static void (*handler[LASTEvent])(XEvent *) = {
 	[KeyPress] = kpress,
-	[KeyRelease] = kpress,
 	[ClientMessage] = cmessage,
 	[ConfigureNotify] = resize,
 	[VisibilityNotify] = visibility,
@@ -276,10 +275,6 @@ static char *opt_title = NULL;
 
 static uint buttons; /* bit field of pressed buttons */
 static int cursorblinks = 0;
-/* scrollbar drag state */
-static int sb_drag_active    = 0;
-static int sb_drag_start_y   = 0;
-static int sb_drag_start_scr = 0;
 
 void
 clipcopy(const Arg *dummy)
@@ -480,10 +475,6 @@ mouseaction(XEvent *e, uint release)
 	/* ignore Button<N>mask for Button<N> - it's set on release */
 	uint state = e->xbutton.state & ~buttonmask(e->xbutton.button);
 
-	if (release == 0 && e->xbutton.button == Button1) {
-		return followurl(evcol(e), evrow(e));
-	}
-
 	for (ms = mshortcuts; ms < mshortcuts + LEN(mshortcuts); ms++) {
 		if (ms->release == release &&
 		    ms->button == e->xbutton.button &&
@@ -507,38 +498,6 @@ bpress(XEvent *e)
 	if (1 <= btn && btn <= 11)
 		buttons |= 1 << (btn-1);
 
-	/* scrollbar click */
-	if (btn == Button1 && e->xbutton.x >= win.w - scrollbarwidth) {
-		//if (gethisti() == 0)
-		if (!gethistorystarted())
-			return;
-		int scr      = getscr();
-		int rows     = getrows();
-		int histsize = gethistsize();
-		int total    = histsize + rows;
-		int barh     = win.h;
-		int thumbh   = MAX(3 * win.ch, barh * rows / total);
-		int travel   = barh - thumbh;
-		/* top of track = scr=0 (live), bottom of track = scr=histsize
-		 * so clicking lower = higher scr = more scrolled into history */
-		int newscr   = (travel > 0)
-		    ? (travel - (e->xbutton.y - 4)) * histsize / travel
-		    : 0;
-		newscr = MAX(0, MIN(newscr, histsize - 1));
-		Arg a;
-		if (newscr > scr) {
-			a.i = newscr - scr;
-			kscrollup(&a);
-		} else if (newscr < scr) {
-			a.i = scr - newscr;
-			kscrolldown(&a);
-		}
-		sb_drag_active    = 1;
-		sb_drag_start_y   = e->xbutton.y;
-		sb_drag_start_scr = getscr();
-		return;
-	}
-
 	if (IS_SET(MODE_MOUSE) && !(e->xbutton.state & forcemousemod)) {
 		mousereport(e);
 		return;
@@ -548,6 +507,10 @@ bpress(XEvent *e)
 		return;
 
 	if (btn == Button1) {
+		/*
+		 * If the user clicks below predefined timeouts specific
+		 * snapping behaviour is exposed.
+		 */
 		clock_gettime(CLOCK_MONOTONIC, &now);
 		if (TIMEDIFF(now, xsel.tclick2) <= tripleclicktimeout) {
 			snap = SNAP_LINE;
@@ -562,44 +525,6 @@ bpress(XEvent *e)
 		selstart(evcol(e), evrow(e), snap);
 	}
 }
-
-//void
-//bpress(XEvent *e)
-//{
-//	int btn = e->xbutton.button;
-//	struct timespec now;
-//	int snap;
-//
-//	if (1 <= btn && btn <= 11)
-//		buttons |= 1 << (btn-1);
-//
-//	if (IS_SET(MODE_MOUSE) && !(e->xbutton.state & forcemousemod)) {
-//		mousereport(e);
-//		return;
-//	}
-//
-//	if (mouseaction(e, 0))
-//		return;
-//
-//	if (btn == Button1) {
-//		/*
-//		 * If the user clicks below predefined timeouts specific
-//		 * snapping behaviour is exposed.
-//		 */
-//		clock_gettime(CLOCK_MONOTONIC, &now);
-//		if (TIMEDIFF(now, xsel.tclick2) <= tripleclicktimeout) {
-//			snap = SNAP_LINE;
-//		} else if (TIMEDIFF(now, xsel.tclick1) <= doubleclicktimeout) {
-//			snap = SNAP_WORD;
-//		} else {
-//			snap = 0;
-//		}
-//		xsel.tclick2 = xsel.tclick1;
-//		xsel.tclick1 = now;
-//
-//		selstart(evcol(e), evrow(e), snap);
-//	}
-//}
 
 void
 propnotify(XEvent *e)
@@ -892,11 +817,6 @@ brelease(XEvent *e)
 {
 	int btn = e->xbutton.button;
 
-	if (sb_drag_active && btn == Button1) {
-		sb_drag_active = 0;
-		return;
-	}
-
 	if (1 <= btn && btn <= 11)
 		buttons &= ~(1 << (btn-1));
 
@@ -911,59 +831,9 @@ brelease(XEvent *e)
 		mousesel(e, 1);
 }
 
-//void
-//brelease(XEvent *e)
-//{
-//	int btn = e->xbutton.button;
-//
-//	if (1 <= btn && btn <= 11)
-//		buttons &= ~(1 << (btn-1));
-//
-//	if (IS_SET(MODE_MOUSE) && !(e->xbutton.state & forcemousemod)) {
-//		mousereport(e);
-//		return;
-//	}
-//
-//	if (mouseaction(e, 1))
-//		return;
-//	if (btn == Button1)
-//		mousesel(e, 1);
-//}
-
 void
 bmotion(XEvent *e)
 {
-	if (sb_drag_active) {
-		//if (gethisti() == 0) {
-		if (!gethistorystarted()) {
-			sb_drag_active = 0;
-			return;
-		}
-		int histsize = gethistsize();
-		int rows     = getrows();
-		int total    = histsize + rows;
-		int barh     = win.h;
-		int thumbh   = MAX(3 * win.ch, barh * rows / total);
-		int travel   = barh - thumbh;
-		if (travel > 0) {
-			int dy     = e->xbutton.y - sb_drag_start_y;
-			/* dragging down = moving toward history = scr decreases
-			 * dragging up = moving toward live = scr increases */
-			int newscr = sb_drag_start_scr - dy * histsize / travel;
-			newscr     = MAX(0, MIN(newscr, histsize - 1));
-			int scr    = getscr();
-			Arg a;
-			if (newscr > scr) {
-				a.i = newscr - scr;
-				kscrollup(&a);
-			} else if (newscr < scr) {
-				a.i = scr - newscr;
-				kscrolldown(&a);
-			}
-		}
-		return;
-	}
-
 	if (IS_SET(MODE_MOUSE) && !(e->xbutton.state & forcemousemod)) {
 		mousereport(e);
 		return;
@@ -971,17 +841,6 @@ bmotion(XEvent *e)
 
 	mousesel(e, 0);
 }
-
-//void
-//bmotion(XEvent *e)
-//{
-//	if (IS_SET(MODE_MOUSE) && !(e->xbutton.state & forcemousemod)) {
-//		mousereport(e);
-//		return;
-//	}
-//
-//	mousesel(e, 0);
-//}
 
 void
 cresize(int width, int height)
@@ -993,41 +852,18 @@ cresize(int width, int height)
 	if (height != 0)
 		win.h = height;
 
-	col = (win.w - 2 * borderpx - scrollbarwidth) / win.cw;
+	col = (win.w - 2 * borderpx) / win.cw;
 	row = (win.h - 2 * borderpx) / win.ch;
 	col = MAX(1, col);
 	row = MAX(1, row);
 
-	win.hborderpx = (win.w - col * win.cw - scrollbarwidth) / 2;
+	win.hborderpx = (win.w - col * win.cw) / 2;
 	win.vborderpx = (win.h - row * win.ch) / 2;
 
 	tresize(col, row);
 	xresize(col, row);
 	ttyresize(win.tw, win.th);
 }
-
-//void
-//cresize(int width, int height)
-//{
-//	int col, row;
-//
-//	if (width != 0)
-//		win.w = width;
-//	if (height != 0)
-//		win.h = height;
-//
-//	col = (win.w - 2 * borderpx) / win.cw;
-//	row = (win.h - 2 * borderpx) / win.ch;
-//	col = MAX(1, col);
-//	row = MAX(1, row);
-//
-//	win.hborderpx = (win.w - col * win.cw) / 2;
-//	win.vborderpx = (win.h - row * win.ch) / 2;
-//
-//	tresize(col, row);
-//	xresize(col, row);
-//	ttyresize(win.tw, win.th);
-//}
 
 void
 xresize(int col, int row)
@@ -1910,27 +1746,6 @@ xdrawglyphfontspecs(const XftGlyphFontSpec *specs, Glyph base, int len, int x, i
 		}
 	}
 
-	//if ((base.mode & ATTR_BOLD_FAINT) == ATTR_FAINT) {
-	//	colfg.red = fg->color.red / 2;
-	//	colfg.green = fg->color.green / 2;
-	//	colfg.blue = fg->color.blue / 2;
-	//	colfg.alpha = fg->color.alpha;
-	//	XftColorAllocValue(xw.dpy, xw.vis, xw.cmap, &colfg, &revfg);
-	//	fg = &revfg;
-	//}
-
-	//if (base.mode & ATTR_REVERSE) {
-	//	temp = fg;
-	//	fg = bg;
-	//	bg = temp;
-	//}
-
-	//if (base.mode & ATTR_BLINK && win.mode & MODE_BLINK)
-	//	fg = bg;
-
-	//if (base.mode & ATTR_INVISIBLE)
-	//	fg = bg;
-
 	if ((base.mode & ATTR_BOLD_FAINT) == ATTR_FAINT) {
 		colfg.red = fg->color.red / 2;
 		colfg.green = fg->color.green / 2;
@@ -1939,16 +1754,16 @@ xdrawglyphfontspecs(const XftGlyphFontSpec *specs, Glyph base, int len, int x, i
 		XftColorAllocValue(xw.dpy, xw.vis, xw.cmap, &colfg, &revfg);
 		fg = &revfg;
 	}
-	/* URL color: bright blue */
-	if (base.mode & ATTR_URL)
-		fg = &dc.col[12];
+
 	if (base.mode & ATTR_REVERSE) {
 		temp = fg;
 		fg = bg;
 		bg = temp;
 	}
+
 	if (base.mode & ATTR_BLINK && win.mode & MODE_BLINK)
 		fg = bg;
+
 	if (base.mode & ATTR_INVISIBLE)
 		fg = bg;
 
@@ -1959,13 +1774,9 @@ xdrawglyphfontspecs(const XftGlyphFontSpec *specs, Glyph base, int len, int x, i
 			((winy + win.ch >= win.vborderpx + win.th)? win.h : 0));
 	}
 	if (winx + width >= win.hborderpx + win.tw) {
-		xclear(winx + width, (y == 0)? 0 : winy, win.w - scrollbarwidth,
+		xclear(winx + width, (y == 0)? 0 : winy, win.w,
 			((winy + win.ch >= win.vborderpx + win.th)? win.h : (winy + win.ch)));
 	}
-	//if (winx + width >= win.hborderpx + win.tw) {
-	//	xclear(winx + width, (y == 0)? 0 : winy, win.w,
-	//		((winy + win.ch >= win.vborderpx + win.th)? win.h : (winy + win.ch)));
-	//}
 	if (y == 0)
 		xclear(winx, 0, winx + width, win.vborderpx);
 	if (winy + win.ch >= win.vborderpx + win.th)
@@ -1985,17 +1796,10 @@ xdrawglyphfontspecs(const XftGlyphFontSpec *specs, Glyph base, int len, int x, i
 	XftDrawGlyphFontSpec(xw.draw, fg, specs, len);
 
 	/* Render underline and strikethrough. */
-	//if (base.mode & ATTR_UNDERLINE || base.mode & ATTR_URL) {
-	//	XftDrawRect(xw.draw, fg, winx, winy + dc.font.ascent * chscale + 1,
-	//			width, 1);
-	//}
-
-	if (base.mode & ATTR_UNDERLINE)
+	if (base.mode & ATTR_UNDERLINE) {
 		XftDrawRect(xw.draw, fg, winx, winy + dc.font.ascent * chscale + 1,
 				width, 1);
-	if (base.mode & ATTR_URL)
-		XftDrawRect(xw.draw, &dc.col[4], winx, winy + dc.font.ascent * chscale + 1,
-				width, 2);
+	}
 
 	if (base.mode & ATTR_STRUCK) {
 		XftDrawRect(xw.draw, fg, winx, winy + 2 * dc.font.ascent * chscale / 3,
@@ -2203,205 +2007,15 @@ xdrawline(Line line, int x1, int y1, int x2)
 		xdrawglyphfontspecs(specs, base, i, ox, y1);
 }
 
-static void
-xdrawroundedrect(int x, int y, int w, int h, Color *col)
-{
-	int r = w / 2; /* radius = half the bar width */
-
-	if (h <= 0 || w <= 0)
-		return;
-
-	if (h <= 2 * r) {
-		/* too short for separate top/mid/bottom — just draw a circle */
-		XftDrawRect(xw.draw, col, x, y + (h - w) / 2, w, w);
-		return;
-	}
-
-	/* top cap: filled square + arc approximation via stacked rects */
-	/* We fake the roundness by drawing shrinking rects at top and bottom */
-	int i;
-	for (i = 0; i < r; i++) {
-		int inset = r - (int)sqrt((double)(r*r - (r-i-1)*(r-i-1)));
-		XftDrawRect(xw.draw, col, x + inset, y + i,
-		            w - 2 * inset, 1);
-	}
-
-	/* middle body */
-	XftDrawRect(xw.draw, col, x, y + r, w, h - 2 * r);
-
-	/* bottom cap */
-	for (i = 0; i < r; i++) {
-		int inset = (int)sqrt((double)(r*r - i*i));
-		inset = r - inset;
-		XftDrawRect(xw.draw, col, x + inset, y + h - r + i,
-		            w - 2 * inset, 1);
-	}
-}
-
-static void
-xdrawscrollbar(void)
-{
-	int scr      = getscr();
-	int rows     = getrows();
-	int histsize = gethistsize();
-	int total    = histsize + rows;
-	int barh     = win.h;
-	int barx     = win.w - scrollbarwidth;
-
-	int innerw = scrollbarwidth - 2 * scrollbarborderpx;
-	int innerx = barx + (scrollbarwidth - innerw) / 2;
-
-	/* thumb travels within track but with small top/bottom padding */
-	int tropy = scrollbarvpadding;
-	int troph = barh - 2 * scrollbarvpadding;
-
-	Color track, thumb;
-	XftColorAllocName(xw.dpy, xw.vis, xw.cmap, scrollbartrackcolor, &track);
-	XftColorAllocName(xw.dpy, xw.vis, xw.cmap, scrollbarthumbcolor, &thumb);
-
-	/* flat track — full height, flush to window edge */
-	XftDrawRect(xw.draw, &track, barx, 0, scrollbarwidth, barh);
-
-	int thumbh = MAX(3 * win.ch, troph * rows / total);
-	thumbh = MIN(thumbh, troph);
-
-	int travel = troph - thumbh;
-	int thumby;
-
-	if (travel <= 0) {
-		thumby = 0;
-	} else if (!gethistorystarted() && scr == 0) {
-		thumby = 0;
-	} else if (scr == 0) {
-		thumby = travel;
-	} else {
-		thumby = travel - travel * scr / histsize;
-		thumby = MAX(0, MIN(thumby, travel));
-	}
-
-	/* offset by padding so thumb never touches track edges */
-	thumby += tropy;
-
-	xdrawroundedrect(innerx, thumby, innerw, thumbh, &thumb);
-
-	XftColorFree(xw.dpy, xw.vis, xw.cmap, &track);
-	XftColorFree(xw.dpy, xw.vis, xw.cmap, &thumb);
-}
-
-//static void
-//xdrawscrollbar(void)
-//{
-//	int scr      = getscr();
-//	int rows     = getrows();
-//	int histsize = gethistsize();
-//	int total    = histsize + rows;
-//	int barx     = win.w - scrollbarwidth;
-//	int barh     = win.h;
-//
-//	/* thumb is narrower than track — inset on both sides */
-//	int innerw = scrollbarwidth - 2 * scrollbarborderpx;
-//	int innerx = barx + (scrollbarwidth - innerw) / 2;
-//
-//	Color track, thumb;
-//	XftColorAllocName(xw.dpy, xw.vis, xw.cmap, scrollbartrackcolor, &track);
-//	XftColorAllocName(xw.dpy, xw.vis, xw.cmap, scrollbarthumbcolor, &thumb);
-//
-//	/* rounded track — full height */
-//	xdrawroundedrect(barx, 0, scrollbarwidth, barh, &track);
-//
-//	int thumbh = MAX(3 * win.ch, barh * rows / total);
-//	thumbh = MIN(thumbh, barh);
-//
-//	int travel = barh - thumbh;
-//	int thumby;
-//
-//	if (travel <= 0) {
-//		thumby = 0;
-//	} else if (!gethistorystarted() && scr == 0) {
-//		thumby = 0;
-//	} else if (scr == 0) {
-//		thumby = travel;
-//	} else {
-//		thumby = travel - travel * scr / histsize;
-//		thumby = MAX(0, MIN(thumby, travel));
-//	}
-//
-//	/* rounded thumb, narrower and centered inside track */
-//	xdrawroundedrect(innerx, thumby, innerw, thumbh, &thumb);
-//
-//	XftColorFree(xw.dpy, xw.vis, xw.cmap, &track);
-//	XftColorFree(xw.dpy, xw.vis, xw.cmap, &thumb);
-//}
-
-//static void
-//xdrawscrollbar(void)
-//{
-//	int scr      = getscr();
-//	int rows     = getrows();
-//	int histsize = gethistsize();
-//	int total    = histsize + rows;
-//	int barx     = win.w - scrollbarwidth;
-//	int innerw   = scrollbarwidth - 2 * scrollbarborderpx;
-//	int innerx   = barx + (scrollbarwidth - innerw) / 2;
-//
-//	int gap  = 4;
-//	int bary = gap;
-//	int barh = win.h - 2 * gap;
-//
-//	if (barh <= 0)
-//		return;
-//
-//	Color track, thumb;
-//	XftColorAllocName(xw.dpy, xw.vis, xw.cmap, scrollbartrackcolor, &track);
-//	XftColorAllocName(xw.dpy, xw.vis, xw.cmap, scrollbarthumbcolor, &thumb);
-//
-//	xdrawroundedrect(barx, bary, scrollbarwidth, barh, &track);
-//
-//	int thumbh = MAX(3 * win.ch, barh * rows / total);
-//	thumbh = MIN(thumbh, barh);
-//
-//	int travel = barh - thumbh;
-//	int thumby;
-//
-//	if (travel <= 0) {
-//		thumby = 0;
-//	} else if (!gethistorystarted() && scr == 0) {
-//		thumby = 0;
-//	} else if (scr == 0) {
-//		thumby = travel;
-//	} else {
-//		thumby = travel - travel * scr / histsize;
-//		thumby = MAX(0, MIN(thumby, travel));
-//	}
-//
-//	thumby += bary;
-//
-//	xdrawroundedrect(innerx, thumby, innerw, thumbh, &thumb);
-//
-//	XftColorFree(xw.dpy, xw.vis, xw.cmap, &track);
-//	XftColorFree(xw.dpy, xw.vis, xw.cmap, &thumb);
-//}
-
 void
 xfinishdraw(void)
 {
-	xdrawscrollbar();
 	XCopyArea(xw.dpy, xw.buf, xw.win, dc.gc, 0, 0, win.w,
 			win.h, 0, 0);
 	XSetForeground(xw.dpy, dc.gc,
 			dc.col[IS_SET(MODE_REVERSE)?
 				defaultfg : defaultbg].pixel);
 }
-
-//void
-//xfinishdraw(void)
-//{
-//	XCopyArea(xw.dpy, xw.buf, xw.win, dc.gc, 0, 0, win.w,
-//			win.h, 0, 0);
-//	XSetForeground(xw.dpy, dc.gc,
-//			dc.col[IS_SET(MODE_REVERSE)?
-//				defaultfg : defaultbg].pixel);
-//}
 
 void
 xximspot(int x, int y)
@@ -2571,11 +2185,6 @@ kpress(XEvent *ev)
 	} else {
 		len = XLookupString(e, buf, sizeof buf, &ksym, NULL);
 	}
-
-	/* KeyRelease not relevant to shortcuts */
-	if (ev->type == KeyRelease)
-		return;
-
 	/* 1. shortcuts */
 	for (bp = shortcuts; bp < shortcuts + LEN(shortcuts); bp++) {
 		if (ksym == bp->keysym && match(bp->mod, e->state)) {
@@ -2992,7 +2601,7 @@ run:
 		opt_cmd = argv;
 
 	if (!opt_title)
-		opt_title = (opt_line || !opt_cmd) ? "mrst" : opt_cmd[0];
+		opt_title = (opt_line || !opt_cmd) ? "st" : opt_cmd[0];
 
 	setlocale(LC_CTYPE, "");
 	XSetLocaleModifiers("");

@@ -1,10 +1,8 @@
-# st version
+# mrst version
 VERSION = 0.9
 
-# Customize below to fit your system
-
 # paths
-PREFIX = /usr/local
+PREFIX = /usr
 MANPREFIX = $(PREFIX)/share/man
 ICONPREFIX = $(PREFIX)/share/pixmaps
 ICONNAME = mrst.png

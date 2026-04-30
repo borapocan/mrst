@@ -1,13 +1,12 @@
-# st - simple terminal
+# mrst - MrRobotOS terminal
 # See LICENSE file for copyright and license details.
 .POSIX:
-
 include config.mk
 
 SRC = st.c x.c
 OBJ = $(SRC:.c=.o)
 
-all: st
+all: mrst
 
 config.h:
 	cp config.def.h config.h
@@ -17,38 +16,29 @@ config.h:
 
 st.o: config.h st.h win.h
 x.o: arg.h config.h st.h win.h
-
 $(OBJ): config.h config.mk
 
-st: $(OBJ)
+mrst: $(OBJ)
 	$(CC) -o $@ $(OBJ) $(STLDFLAGS)
 
 clean:
-	rm -f st $(OBJ) st-$(VERSION).tar.gz
+	rm -f mrst $(OBJ) mrst-$(VERSION).tar.gz
 
-dist: clean
-	mkdir -p st-$(VERSION)
-	cp -R FAQ LEGACY TODO LICENSE Makefile README config.mk\
-		config.def.h st.info st.1 arg.h st.h win.h $(SRC)\
-		st-$(VERSION)
-	tar -cf - st-$(VERSION) | gzip > st-$(VERSION).tar.gz
-	rm -rf st-$(VERSION)
-
-install: st
+install: mrst
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
-	cp -f st $(DESTDIR)$(PREFIX)/bin
-	chmod 755 $(DESTDIR)$(PREFIX)/bin/st
+	cp -f mrst $(DESTDIR)$(PREFIX)/bin
+	chmod 755 $(DESTDIR)$(PREFIX)/bin/mrst
 	mkdir -p $(DESTDIR)$(MANPREFIX)/man1
-	sed "s/VERSION/$(VERSION)/g" < st.1 > $(DESTDIR)$(MANPREFIX)/man1/st.1
-	chmod 644 $(DESTDIR)$(MANPREFIX)/man1/st.1
+	sed "s/VERSION/$(VERSION)/g" < st.1 > $(DESTDIR)$(MANPREFIX)/man1/mrst.1
+	chmod 644 $(DESTDIR)$(MANPREFIX)/man1/mrst.1
 	tic -sx st.info
-	@echo Please see the README file regarding the terminfo entry of st.
+	@echo Please see the README file regarding the terminfo entry of mrst.
 	mkdir -p $(DESTDIR)$(ICONPREFIX)
 	[ -f $(ICONNAME) ] && cp -f $(ICONNAME) $(DESTDIR)$(ICONPREFIX) || :
 
 uninstall:
-	rm -f $(DESTDIR)$(PREFIX)/bin/st
-	rm -f $(DESTDIR)$(MANPREFIX)/man1/st.1
+	rm -f $(DESTDIR)$(PREFIX)/bin/mrst
+	rm -f $(DESTDIR)$(MANPREFIX)/man1/mrst.1
 	rm -f $(DESTDIR)$(ICONPREFIX)/$(ICONNAME)
 
 .PHONY: all clean dist install uninstall

@@ -35,7 +35,7 @@
 #define ESC_ARG_SIZ   16
 #define STR_BUF_SIZ   ESC_BUF_SIZ
 #define STR_ARG_SIZ   ESC_ARG_SIZ
-#define HISTSIZE      5000
+#define HISTSIZE      2000
 
 /* macros */
 #define IS_SET(flag)		((term.mode & (flag)) != 0)
@@ -241,7 +241,6 @@ static STREscape strescseq;
 static int iofd = 1;
 static int cmdfd;
 static pid_t pid;
-static int history_started = 0;
 
 static const uchar utfbyte[UTF_SIZ + 1] = {0x80,    0, 0xC0, 0xE0, 0xF0};
 static const uchar utfmask[UTF_SIZ + 1] = {0xC0, 0x80, 0xE0, 0xF0, 0xF8};
@@ -660,103 +659,6 @@ getsel(void)
 	}
 	*ptr = 0;
 	return str;
-}
-
-char *
-strstrany(char* s, char** strs) {
-	char *match;
-	for (int i = 0; strs[i]; i++) {
-		if ((match = strstr(s, strs[i]))) {
-			return match;
-		}
-	}
-	return NULL;
-}
-
-void
-highlighturlsline(int row)
-{
-	char *linestr = calloc(sizeof(char), term.col+1); /* assume ascii */
-	char *match;
-	for (int j = 0; j < term.col; j++) {
-		if (term.line[row][j].u < 127) {
-			linestr[j] = term.line[row][j].u;
-		}
-		linestr[term.col] = '\0';
-	}
-	int url_start = -1;
-	while ((match = strstrany(linestr + url_start + 1, urlprefixes))) {
-		url_start = match - linestr;
-		for (int c = url_start; c < term.col && strchr(urlchars, linestr[c]); c++) {
-			term.line[row][c].mode |= ATTR_URL;
-			tsetdirt(row, c);
-		}
-	}
-	free(linestr);
-}
-
-void
-unhighlighturlsline(int row)
-{
-	for (int j = 0; j < term.col; j++) {
-		Glyph* g = &term.line[row][j];
-		if (g->mode & ATTR_URL) {
-			g->mode &= ~ATTR_URL;
-			tsetdirt(row, j);
-		}
-	}
-	return;
-}
-
-int
-followurl(int col, int row) {
-	char *linestr = calloc(sizeof(char), term.col+1); /* assume ascii */
-	char *match;
-	for (int i = 0; i < term.col; i++) {
-		if (term.line[row][i].u < 127) {
-			linestr[i] = term.line[row][i].u;
-		}
-		linestr[term.col] = '\0';
-	}
-	int url_start = -1, found_url = 0;
-	while ((match = strstrany(linestr + url_start + 1, urlprefixes))) {
-		url_start = match - linestr;
-		int url_end = url_start;
-		for (int c = url_start; c < term.col && strchr(urlchars, linestr[c]); c++) {
-			url_end++;
-		}
-		if (url_start <= col && col < url_end) {
-			found_url = 1;
-			linestr[url_end] = '\0';
-			break;
-		}
-	}
-	if (!found_url) {
-		free(linestr);
-		return 0;
-	}
-
-	pid_t chpid;
-	if ((chpid = fork()) == 0) {
-		if (fork() == 0) {
-		    int devnull = open("/dev/null", O_WRONLY);
-    		    dup2(devnull, STDERR_FILENO);
-    		    dup2(devnull, STDOUT_FILENO);
-    		    close(devnull);
-    		    execlp(urlhandler, urlhandler, "--new-window", linestr + url_start, NULL);
-    		}
-		//if (fork() == 0)
-		//	//execlp(urlhandler, urlhandler, "-c",
-		//	//	"xdg-open \"$0\" 2>/dev/null || firefox \"$0\"",
-		//	//	linestr + url_start, NULL);
-		//	execlp(urlhandler, urlhandler, "--new-tab", linestr + url_start, NULL);
-			//execlp(urlhandler, urlhandler, linestr + url_start, NULL);
-		exit(1);
-	}
-	if (chpid > 0)
-		waitpid(chpid, NULL, 0);
-	free(linestr);
-    return 1;
 }
 
 void
@@ -1202,9 +1104,6 @@ kscrollup(const Arg* a)
 {
 	int n = a->i;
 
-	if (!history_started)
-		return;
-
 	if (n < 0)
 		n = term.row + n;
 
@@ -1214,25 +1113,6 @@ kscrollup(const Arg* a)
 		tfulldirt();
 	}
 }
-
-//void
-//kscrollup(const Arg* a)
-//{
-//	int n = a->i;
-//
-//	/* block scrolling until history has been written */
-//	if (term.histi == 0)
-//		return;
-//
-//	if (n < 0)
-//		n = term.row + n;
-//
-//	if (term.scr <= HISTSIZE-n) {
-//		term.scr += n;
-//		selscroll(0, n);
-//		tfulldirt();
-//	}
-//}
 
 
 void
@@ -1272,7 +1152,6 @@ tscrollup(int orig, int n, int copyhist)
 
 	LIMIT(n, 0, term.bot-orig+1);
 	if (copyhist) {
-		history_started = 1;
 		term.histi = (term.histi + 1) % HISTSIZE;
 		temp = term.hist[term.histi];
 		term.hist[term.histi] = term.line[orig];
@@ -1807,8 +1686,8 @@ csihandle(void)
 	switch (csiescseq.mode[0]) {
 	default:
 	unknown:
-		//fprintf(stderr, "erresc: unknown csi ");
-		//csidump();
+		fprintf(stderr, "erresc: unknown csi ");
+		csidump();
 		/* die(""); */
 		break;
 	case '@': /* ICH -- Insert <n> blank char */
@@ -2860,36 +2739,6 @@ tresize(int col, int row)
 	term.c = c;
 }
 
-int
-getscr(void)
-{
-	return term.scr;
-}
-
-int
-getrows(void)
-{
-	return term.row;
-}
-
-int
-gethistorystarted(void)
-{
-	return history_started;
-}
-
-int
-gethisti(void)
-{
-	return term.histi;
-}
-
-int
-gethistsize(void)
-{
-	return HISTSIZE;
-}
-
 void
 resettitle(void)
 {
@@ -2906,8 +2755,6 @@ drawregion(int x1, int y1, int x2, int y2)
 			continue;
 
 		term.dirty[y] = 0;
-		unhighlighturlsline(y);
-		highlighturlsline(y);
 		//xdrawline(term.line[y], x1, y, x2);
 		xdrawline(TLINE(y), x1, y, x2);
 	}

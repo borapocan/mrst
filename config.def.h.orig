@@ -14,22 +14,6 @@ static char *font2[] = {
 
 static int borderpx = 0;
 
-/* scrollbar */
-//static int scrollbarwidth    = 10;  /* total px width of scrollbar column */
-//static int scrollbarborderpx = 3;   /* padding inside bar on each side */
-///* color indices: pick from your scheme or use 256/257 custom slots */
-//static unsigned int scrollbartrack = 257; /* track bg  — your #555555 */
-//static unsigned int scrollbarthumb = 256; /* thumb     — your #cccccc */
-//static const char *scrollbartrackcolor = "#808080";
-//static const char *scrollbarthumbcolor = "#1c1c1c";
-
-/* scrollbar */
-static int scrollbarwidth    = 10;
-static int scrollbarborderpx = 2;
-static int scrollbarvpadding = 4;
-static const char *scrollbartrackcolor = "#3a3a3a";
-static const char *scrollbarthumbcolor = "#707070";
-
 /*
  * What program is execed by st depends of these precedence rules:
  * 1: program passed with -e
@@ -96,7 +80,7 @@ static unsigned int cursorthickness = 2;
 static int bellvolume = 0;
 
 /* default TERM value */
-char *termname = "mrst";
+char *termname = "st-256color";
 
 /*
  * spaces per tab
@@ -614,41 +598,3 @@ static char ascii_printable[] =
 	" !\"#$%&'()*+,-./0123456789:;<=>?"
 	"@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"
 	"`abcdefghijklmnopqrstuvwxyz{|}~";
-
-/*
- * Open urls starting with urlprefixes, contatining urlchars
- * by passing as ARG1 to urlhandler.
- */
-//char* urlhandler = "xdg-open";
-char* urlhandler = "firefox"; // Added --new-window in st.c followurl execlp
-//char *urlhandler = "sh";
-
-char urlchars[] =
-	"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	"abcdefghijklmnopqrstuvwxyz"
-	"0123456789-._~:/?#@!$&'*+,;=%";
-
-char *urlprefixes[] = {
-    "http://",
-    "https://",
-    "file://",
-    "ftp://",
-    "ftps://",
-    "sftp://",
-    "git://",
-    "ssh://",
-    "ws://",
-    "wss://",
-    "irc://",
-    "rtsp://",
-    "smb://",
-    "nntp://",
-    "svn://",
-    "news:",
-    "mailto:",
-    "tel:",
-    "sms:",
-    "data:",
-    "javascript:",
-    NULL
-};
